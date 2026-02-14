@@ -1,0 +1,170 @@
+============================================================
+  🎤 FlowMetrics v0.4 — Telemetría de Flow (con Demucs + Whisper)
+============================================================
+
+  📦 Archivo de batalla encontrado: batalla.wav
+
+🧠 [PASO 0] Separación de audio con IA (Demucs)...
+  ℹ️  Este proceso puede tardar entre 1-5 minutos dependiendo de:
+      • La duración del audio
+      • Si tienes GPU (CUDA) o solo CPU
+      • La velocidad de tu procesador
+  📥 Archivo de entrada: batalla.wav
+  🤖 Modelo: htdemucs
+  📂 Salida en: D:\2026\free\separated/
+
+  🔧 Parche aplicado: torchaudio.load/save → soundfile (compatibilidad Windows)
+  ⏳ Procesando... (esto puede tardar, no cierres la terminal)
+
+Selected model is a bag of 1 models. You will see that many progress bars per track.
+Separated tracks will be stored in D:\2026\free\separated\htdemucs
+Separating track D:\2026\free\batalla.wav
+
+  ✅ Separación completada:
+     🎵 Instrumental: D:\2026\free\separated\htdemucs\batalla\no_vocals.wav
+     🎙️  Vocals:       D:\2026\free\separated\htdemucs\batalla\vocals.wav
+  ⏳ Cargando: no_vocals.wav ...
+  ✅ Cargado — Duración: 122.17s | Muestras: 2693888
+
+🥁 [PASO 1] Analizando instrumental...
+  🎵 Tempo detectado: 123.0 BPM
+  🎵 Beats fuertes encontrados: 243
+
+🔲 [PASO 1b] Generando cuadrícula de subdivisiones (x4)...
+  🔲 Subdivisión: 121.9 ms (0.1219 s)
+  🔲 Puntos en la cuadrícula: 1002
+  🔲 Anclaje (primer beat): 0.720 s
+  ⏳ Cargando: vocals.wav ...
+  ✅ Cargado — Duración: 122.17s | Muestras: 2693888
+
+🎤 [PASO 2] Analizando acapella (onset detection)...
+  🗣️  Sílabas (onsets) detectadas: 454
+
+🧠 [PASO 3a] Calculando SPS Máximo...
+  🚀 SPS Máximo: 8 sílabas/segundo
+     (ventana de pico en t = 20.13s — 21.13s)
+
+🧠 [PASO 3b] Calculando Precisión Rítmica (vs. cuadrícula de semicorcheas)...
+  🎯 Aciertos rítmicos: 371/454
+  🎯 Precisión: 81.7%
+
+📊 [PASO 4] Generando visualización → flow_graph.png...
+  ✅ Gráfico guardado en: D:\2026\free\flow_graph.png
+
+📝 [PASO 5] Transcripción con IA (Whisper)...
+  🤖 Modelo: small
+  ℹ️  La primera vez se descargará el modelo (~461 MB). Esto solo ocurre una vez.
+  ⏳ Transcribiendo... (esto puede tardar 1-3 minutos)
+
+  ── Transcripción ──
+
+  [00:00.0 - 00:03.9] "¡Ey! ¡Ey! ¡Ey! ¡En tres, dos, uno!"
+  [00:03.9 - 00:06.7] "¡Más grátis como lo hago si me pierdes, zapado!"
+  [00:06.7 - 00:09.1] "¡Pero tan sucio que necesito abogado!"
+  [00:09.1 - 00:10.4] "¡Yo, rapo, zapado!"
+  [00:10.4 - 00:12.2] "En Colombia todos me ven repasados"
+  [00:12.2 - 00:15.4] "salgo de joda y las guachas me invitan los tragos"
+  [00:15.4 - 00:17.0] "¡Eh yo! ¡Hermano, es así!"
+  [00:17.0 - 00:18.9] "Está caro, machutines de Argentina"
+  [00:18.9 - 00:21.5] "Pienes el floma zapado, nunca te dice pesado"
+  [00:21.5 - 00:23.0] "¡Pero te voy a cagar el palo!"
+  [00:23.0 - 00:25.3] "Te voy a invitar a salir de joda, que está todo pago"
+  [00:25.3 - 00:27.9] "¡Rumba! ¡Rumba! ¡Me te apudo, fumba!"
+  [00:27.9 - 00:30.6] "Quieres chabullarme, echarte a hacer la segunda"
+  [00:30.6 - 00:32.9] "¡Es maturite! Te voy a mandar hasta la tumba"
+  [00:32.9 - 00:36.0] "y aunque le debo un merte, te voy a bailar nunca"
+  [00:36.0 - 00:38.6] "¡El chuti no baila hasta abajo!"
+  [00:38.6 - 00:41.0] "¡En cambio, me chita los bajos!"
+  [00:41.0 - 00:43.1] "¡Hermanito, te mando pal carajo!"
+  [00:43.1 - 00:46.1] "Soy tan reggaetonero que parece mi trabajo"
+  [00:46.1 - 00:47.5] "¡No!"
+  [00:47.5 - 00:48.9] "¡Mira cómo llegó pecha!"
+  [00:48.9 - 00:51.0] "A mí no es como un bítico de pecha"
+  [00:51.0 - 00:53.8] "¡Hola, que te baila! Ya le metes a mi pecha"
+  [00:53.8 - 00:55.7] "No bailabas nada a pecha"
+  [00:55.8 - 00:58.9] "Hoy de marzo el pasito de apagar la mecha"
+  [00:58.9 - 01:01.7] "¡Que me quedaron que me va a contar!"
+  [01:01.7 - 01:03.7] "La gente me lo quiere comparar"
+  [01:03.7 - 01:05.4] "¡Bailo con el de Chaval!"
+  [01:05.4 - 01:07.0] "¡Vamos hasta abajo abajo!"
+  [01:07.0 - 01:08.5] "¡Como me echan la internacional!"
+  [01:08.5 - 01:10.0] "¡No!"
+  [01:10.0 - 01:11.7] "¡No me metes! ¡Estoy al mambo!"
+  [01:12.4 - 01:13.7] "¡Soy el único, mi promesa!"
+  [01:13.7 - 01:14.8] "¡Soy!"
+  [01:14.8 - 01:16.6] "¡El sonico lo está fripando!"
+  [01:16.6 - 01:18.8] "¡Vete a que le toco el baile que le estoy rato!"
+  [01:18.8 - 01:20.8] "¡Usted más!"
+  [01:20.8 - 01:23.3] "¡Dime amigo, ya lo sabes!"
+  [01:23.3 - 01:24.6] "¡No entendido!"
+  [01:24.7 - 01:26.6] "Hoy no me está ganar el tiro"
+  [01:26.6 - 01:29.2] "Esto es dejar huella, no tu paso prohibido"
+  [01:29.2 - 01:33.0] "¡Tiempo!"
+  [01:33.0 - 01:34.0] "¡Wow!"
+  [01:34.0 - 01:36.1] "Esto es insólito, eh"
+  [01:36.1 - 01:37.4] "Chuti sacó los prohibidos"
+  [01:37.4 - 01:38.6] "No va a pasar más"
+  [01:38.6 - 01:40.5] "Solo sucede en Colombia, eh"
+  [01:40.5 - 01:42.2] "¡Un aplauso, dichosos!"
+  [01:42.2 - 01:45.0] "Dichosos los que han visto esto"
+  [01:45.0 - 01:47.6] "Ok, vamos con el veredicto del jurado"
+  [01:47.6 - 01:51.8] "A la cuenta de 3, 2, 1"
+  [01:51.8 - 01:54.3] "¡Chuti!"
+  [01:54.4 - 01:57.4] "¡Chuti elimina la vida de Mecha!"
+  [01:57.4 - 02:00.1] "¡Vamos, vamos, vamos!"
+  [02:00.1 - 02:02.1] "Ok"
+
+  ✅ Transcripción completada: 55 segmentos detectados.
+
+============================================================
+  📋 RESUMEN DE ANÁLISIS
+============================================================
+  Fuente:                    batalla.wav
+  Duración de la acapella:   122.17 s
+  Tempo de la instrumental:  123 BPM
+  Subdivisión (16th note):   121.9 ms
+  Puntos en cuadrícula:      1002
+  Total sílabas detectadas:  454
+  SPS Promedio:              3.7 síl/s
+  SPS Máximo (pico):         8 síl/s  (en t=20.13s)
+  Precisión rítmica:         81.7%  (371/454 aciertos)
+  Segmentos transcritos:     55
+  🔥 La rima más rápida fue: "Pienes el floma zapado, nunca te dice pesado"
+  Gráfico guardado en:       D:\2026\free\flow_graph.png
+============================================================
+
+---STDERR---
+
+  0%|                                                                                 | 0.0/122.85 [00:00<?, ?seconds/s]
+  5%|███▍                                                                    | 5.85/122.85 [00:03<01:18,  1.49seconds/s]
+ 10%|██████▊                                                                 | 11.7/122.85 [00:06<01:04,  1.72seconds/s]
+ 14%|████████▎                                                 | 17.549999999999997/122.85 [00:09<00:57,  1.84seconds/s]
+ 19%|█████████████▋                                                          | 23.4/122.85 [00:12<00:51,  1.94seconds/s]
+ 24%|████████████████▉                                                      | 29.25/122.85 [00:15<00:47,  1.96seconds/s]
+ 29%|████████████████▌                                         | 35.099999999999994/122.85 [00:18<00:44,  1.99seconds/s]
+ 33%|███████████████████▎                                      | 40.949999999999996/122.85 [00:21<00:41,  1.98seconds/s]
+ 38%|███████████████████████████▍                                            | 46.8/122.85 [00:24<00:38,  1.96seconds/s]
+ 43%|██████████████████████████████▍                                        | 52.65/122.85 [00:27<00:37,  1.88seconds/s]
+ 48%|██████████████████████████████████▎                                     | 58.5/122.85 [00:31<00:35,  1.82seconds/s]
+ 52%|█████████████████████████████████████▏                                 | 64.35/122.85 [00:34<00:31,  1.86seconds/s]
+ 57%|█████████████████████████████████▋                         | 70.19999999999999/122.85 [00:37<00:28,  1.87seconds/s]
+ 62%|███████████████████████████████████████████▉                           | 76.05/122.85 [00:40<00:25,  1.83seconds/s]
+ 67%|███████████████████████████████████████▎                   | 81.89999999999999/122.85 [00:43<00:22,  1.86seconds/s]
+ 71%|██████████████████████████████████████████████████▋                    | 87.75/122.85 [00:46<00:18,  1.88seconds/s]
+ 76%|██████████████████████████████████████████████████████▊                 | 93.6/122.85 [00:49<00:14,  2.01seconds/s]
+ 81%|███████████████████████████████████████████████▊           | 99.44999999999999/122.85 [00:51<00:11,  2.12seconds/s]
+ 86%|████████████████████████████████████████████████████████████▊          | 105.3/122.85 [00:54<00:07,  2.20seconds/s]
+ 90%|████████████████████████████████████████████████████▍     | 111.14999999999999/122.85 [00:57<00:05,  2.12seconds/s]
+ 95%|███████████████████████████████████████████████████████████████████▌   | 117.0/122.85 [01:00<00:02,  2.06seconds/s]
+100%|██████████████████████████████████████████████████████████████████████| 122.85/122.85 [01:03<00:00,  2.01seconds/s]
+100%|██████████████████████████████████████████████████████████████████████| 122.85/122.85 [01:03<00:00,  1.95seconds/s]
+C:\Users\honk\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\whisper\transcribe.py:132: UserWarning: FP16 is not supported on CPU; using FP32 instead
+  warnings.warn("FP16 is not supported on CPU; using FP32 instead")
+
+  0%|          | 0/12217 [00:00<?, ?frames/s]
+ 23%|██▎       | 2792/12217 [00:09<00:33, 282.49frames/s]
+ 46%|████▌     | 5572/12217 [00:19<00:23, 282.96frames/s]
+ 69%|██████▉   | 8464/12217 [00:30<00:13, 280.51frames/s]
+ 94%|█████████▎| 11432/12217 [00:38<00:02, 310.97frames/s]
+100%|██████████| 12217/12217 [00:41<00:00, 294.18frames/s]
+100%|██████████| 12217/12217 [00:41<00:00, 292.66frames/s]
