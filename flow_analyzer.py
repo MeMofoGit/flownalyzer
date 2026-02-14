@@ -16,6 +16,7 @@ REQUISITOS:
 
 import os
 import sys
+import json
 import numpy as np
 import librosa
 import librosa.display
@@ -30,6 +31,7 @@ import gc
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INPUT_EXTENSIONS = [".wav", ".mp3", ".flac", ".ogg"]
 INPUT_BASENAME = "batalla"
+PENDINGS_DIR = os.path.join(SCRIPT_DIR, "pendings")
 DEMUCS_MODEL = "htdemucs"
 DEMUCS_OUTPUT_DIR = os.path.join(SCRIPT_DIR, "separated")
 FALLBACK_INSTRUMENTAL = os.path.join(SCRIPT_DIR, "instrumental.wav")
@@ -42,6 +44,13 @@ WHISPERX_MODEL = "large-v2"
 WHISPER_FALLBACK_MODEL = "small"
 COMPUTE_TYPE = "int8"
 HF_TOKEN = os.environ.get("HF_TOKEN", "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")
+
+VOICEDB_PATH = os.path.join(SCRIPT_DIR, "voicedb.json")
+# Umbral de similitud coseno para reconocer un MC conocido
+# 0.75 para embeddings de pyannote (alta discriminación)
+# 0.65 se usa internamente para embeddings MFCC (menos discriminativos)
+EMBEDDING_MATCH_THRESHOLD = 0.75
+MFCC_MATCH_THRESHOLD = 0.65
 
 SPEAKER_COLORS = {
     "SPEAKER_00": "#3fb950",  # Verde
@@ -106,6 +115,19 @@ def _patch_torchaudio():
         except: pass
 
 def find_input_file():
+    """Busca archivo de audio a procesar.
+
+    Prioridad:
+    1. Cualquier archivo de audio en la carpeta pendings/
+    2. Archivo 'batalla.*' en el directorio raíz (compatibilidad)
+    """
+    # 1. Buscar en pendings/ — toma el primero que encuentre
+    if os.path.isdir(PENDINGS_DIR):
+        for fname in os.listdir(PENDINGS_DIR):
+            if any(fname.lower().endswith(ext) for ext in INPUT_EXTENSIONS):
+                return os.path.join(PENDINGS_DIR, fname)
+
+    # 2. Fallback: buscar batalla.* en raíz
     for ext in INPUT_EXTENSIONS:
         f = os.path.join(SCRIPT_DIR, INPUT_BASENAME + ext)
         if os.path.isfile(f): return f
@@ -114,16 +136,22 @@ def find_input_file():
 def separate_audio(input_path):
     print("\n🧠 [PASO 0] Demucs (Separación)...")
     _patch_torchaudio()
-    
-    # Check cache
+
+    # Check cache — comparar fecha de modificación del archivo fuente
+    # contra los stems. Si el fuente es más nuevo, re-procesar.
     fname = os.path.splitext(os.path.basename(input_path))[0]
     out_dir = os.path.join(DEMUCS_OUTPUT_DIR, DEMUCS_MODEL, fname)
     voc = os.path.join(out_dir, "vocals.wav")
     inst = os.path.join(out_dir, "no_vocals.wav")
-    
+
     if os.path.exists(voc) and os.path.exists(inst):
-        print("  ✅ Archivos cacheados encontrados. Usando existentes.")
-        return inst, voc
+        source_mtime = os.path.getmtime(input_path)
+        cache_mtime = min(os.path.getmtime(voc), os.path.getmtime(inst))
+        if cache_mtime > source_mtime:
+            print("  ✅ Archivos cacheados encontrados. Usando existentes.")
+            return inst, voc
+        else:
+            print("  🔄 Archivo fuente más reciente que el cache. Re-procesando...")
 
     print("  ⏳ Procesando separación (esto tarda)...")
     try:
@@ -193,6 +221,163 @@ def calc_metrics(onsets, grid, window=1.0):
     return max_sps, peak_t, acc, hits, len(onsets)
 
 # ============================================================================
+# BASE DE DATOS DE VOCES (IDENTIFICACIÓN DE MCs)
+# ============================================================================
+
+def load_voicedb():
+    """Carga la base de datos de huellas vocales desde voicedb.json.
+
+    Retorna un dict {nombre_mc: {"embedding": [...], "battles": N}}
+    o un dict vacío si el archivo no existe.
+    """
+    if os.path.exists(VOICEDB_PATH):
+        try:
+            with open(VOICEDB_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"  ⚠️  Error leyendo voicedb.json: {e}")
+    return {}
+
+def save_voicedb(db):
+    """Persiste la base de datos de huellas vocales a voicedb.json."""
+    with open(VOICEDB_PATH, "w", encoding="utf-8") as f:
+        json.dump(db, f, indent=2, ensure_ascii=False)
+
+def cosine_similarity(a, b):
+    """Similitud coseno entre dos vectores.
+
+    Mide el ángulo entre los vectores de embedding — cuanto más cercano a 1,
+    más similares son las voces. Se usa en vez de distancia euclidiana porque
+    los embeddings de speaker viven en un espacio donde la dirección importa
+    más que la magnitud.
+    """
+    a, b = np.array(a), np.array(b)
+    # No se pueden comparar embeddings de distinta dimensión
+    # (ej. pyannote=256 dims vs MFCC=40 dims)
+    if a.shape != b.shape:
+        return 0.0
+    norm_a, norm_b = np.linalg.norm(a), np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return float(np.dot(a, b) / (norm_a * norm_b))
+
+def identify_speakers(embeddings, voicedb, is_mfcc=False):
+    """Mapea SPEAKER_XX → nombre real comparando embeddings con la DB.
+
+    Para cada speaker con embedding, calcula similitud coseno contra todos
+    los MCs registrados. Si supera el umbral, asigna el nombre conocido.
+
+    Args:
+        embeddings: dict {speaker_label: [floats]} — embeddings del audio actual
+        voicedb: dict cargado de voicedb.json
+        is_mfcc: si True, usa umbral más bajo (MFCC menos discriminativo)
+
+    Returns:
+        speaker_map: dict {speaker_label: nombre_real_o_"SPEAKER_XX (Nuevo)"}
+    """
+    threshold = MFCC_MATCH_THRESHOLD if is_mfcc else EMBEDDING_MATCH_THRESHOLD
+    speaker_map = {}
+
+    # Evitar asignar el mismo MC a dos speakers distintos
+    used_names = set()
+
+    for spk_label, emb in embeddings.items():
+        best_name = None
+        best_sim = -1
+
+        for mc_name, mc_data in voicedb.items():
+            if mc_name in used_names:
+                continue
+            sim = cosine_similarity(emb, mc_data["embedding"])
+            if sim > best_sim:
+                best_sim = sim
+                best_name = mc_name
+
+        if best_name and best_sim >= threshold:
+            speaker_map[spk_label] = best_name
+            used_names.add(best_name)
+            print(f"  🎯 {spk_label} → {best_name} (similitud: {best_sim:.3f})")
+        else:
+            speaker_map[spk_label] = f"{spk_label} (Nuevo)"
+            if best_name:
+                print(f"  ❓ {spk_label} no coincide con nadie (mejor: {best_name} @ {best_sim:.3f})")
+            else:
+                print(f"  ❓ {spk_label} — no hay MCs registrados en la DB")
+
+    return speaker_map
+
+def register_new_speakers(embeddings, speaker_map, voicedb, is_mfcc=False):
+    """Pregunta al usuario si quiere registrar speakers no identificados.
+
+    Para cada speaker marcado como "(Nuevo)", ofrece al usuario la opción
+    de darle un nombre. Si el MC ya existía en la DB, promedia el embedding
+    viejo con el nuevo (media móvil) para robustecer el reconocimiento.
+    Guarda el tipo de embedding ("pyannote" o "mfcc") para no mezclar
+    dimensiones distintas en futuras comparaciones.
+
+    Returns:
+        voicedb actualizada (también se guarda a disco)
+    """
+    emb_type = "mfcc" if is_mfcc else "pyannote"
+    nuevos = {label: name for label, name in speaker_map.items()
+              if name.endswith("(Nuevo)")}
+
+    if not nuevos:
+        return voicedb
+
+    print("\n" + "="*60)
+    print("  📋 REGISTRO DE MCs")
+    print("="*60)
+    print("  Hay speakers no identificados. ¿Quieres registrarlos?")
+    print("  (Deja vacío para saltar)\n")
+
+    for spk_label in nuevos:
+        if spk_label not in embeddings:
+            continue
+        nombre = input(f"  Nombre para {spk_label}: ").strip()
+        if not nombre:
+            continue
+
+        emb = embeddings[spk_label]
+        if nombre in voicedb and voicedb[nombre].get("type") == emb_type:
+            # Media móvil: promediar embedding existente con el nuevo
+            # Solo si son del mismo tipo (misma dimensión)
+            old_emb = np.array(voicedb[nombre]["embedding"])
+            new_emb = np.array(emb)
+            n = voicedb[nombre]["battles"]
+            # Media ponderada: el embedding existente tiene peso proporcional
+            # al número de batallas previas
+            averaged = ((old_emb * n) + new_emb) / (n + 1)
+            voicedb[nombre]["embedding"] = averaged.tolist()
+            voicedb[nombre]["battles"] = n + 1
+            print(f"  ✅ {nombre} actualizado (batalla #{n+1})")
+        else:
+            # Nuevo MC, o el MC existía con otro tipo de embedding —
+            # se reemplaza con el nuevo (pyannote > mfcc en calidad)
+            if nombre in voicedb:
+                print(f"  ⚠️  {nombre} tenía embedding tipo '{voicedb[nombre].get('type','?')}', reemplazando con '{emb_type}'")
+            voicedb[nombre] = {
+                "embedding": list(emb) if not isinstance(emb, list) else emb,
+                "type": emb_type,
+                "battles": 1
+            }
+            print(f"  ✅ {nombre} registrado en la DB ({emb_type}, {len(emb)} dims)")
+
+        # Actualizar el speaker_map para que el scoreboard use el nombre real
+        speaker_map[spk_label] = nombre
+
+    save_voicedb(voicedb)
+    return voicedb
+
+def rename_segments(segments, speaker_map):
+    """Reemplaza SPEAKER_XX por nombres reales en todos los segmentos."""
+    for seg in segments:
+        old_spk = seg.get("speaker", "UNKNOWN")
+        if old_spk in speaker_map:
+            seg["speaker"] = speaker_map[old_spk]
+    return segments
+
+# ============================================================================
 # TRANSCRIPCIÓN HÍBRIDA (WHISPERX / WHISPER)
 # ============================================================================
 
@@ -217,15 +402,26 @@ def try_transcribe_whisperx(path):
         
         # Diarize — En whisperx 3.8+ DiarizationPipeline se movió a whisperx.diarize
         # y el parámetro se renombró de use_auth_token a token
+        # return_embeddings=True para obtener las huellas vocales de cada speaker
         print(f"  ⏳ Diarizando (Pyannote)...")
         from whisperx.diarize import DiarizationPipeline
         diarize_model = DiarizationPipeline(token=HF_TOKEN, device=device)
         # min_speakers=2 porque una batalla de freestyle tiene al menos 2 MCs
-        diarize_segs = diarize_model(audio, min_speakers=2)
+        diarize_segs = diarize_model(audio, min_speakers=2, return_embeddings=True)
+
+        # Cuando return_embeddings=True, diarize_model retorna una tupla
+        # (diarize_df, {speaker_label: embedding_vector})
+        embeddings = {}
+        if isinstance(diarize_segs, tuple):
+            diarize_segs, embeddings = diarize_segs
+            # Convertir embeddings numpy a listas para serialización
+            embeddings = {k: v.tolist() if hasattr(v, 'tolist') else list(v)
+                          for k, v in embeddings.items()}
+
         result = whisperx.assign_word_speakers(diarize_segs, result)
-        
+
         print("  ✅ WhisperX éxito.")
-        return result["segments"]
+        return result["segments"], embeddings
         
     except Exception as e:
         err_str = str(e)
@@ -237,7 +433,7 @@ def try_transcribe_whisperx(path):
         else:
             print("  ⚠️  (Probablemente incompatibilidad de torchaudio/Windows/Python 3.13)")
         print("  🔄 Cambiando a FALLBACK: Whisper + Diarización Espectral...")
-        return None
+        return None, {}
 
 def _spectral_diarize(path, segments, num_speakers=2):
     """Diarización por clustering espectral (MFCC + KMeans).
@@ -273,7 +469,7 @@ def _spectral_diarize(path, segments, num_speakers=2):
 
     if len(features) < num_speakers:
         print(f"  ⚠️  Pocos segmentos válidos ({len(features)}), no se puede clusterizar.")
-        return segments
+        return segments, {}
 
     X = np.array(features)
     kmeans = KMeans(n_clusters=num_speakers, random_state=42, n_init=10)
@@ -301,7 +497,14 @@ def _spectral_diarize(path, segments, num_speakers=2):
         counts[spk] = counts.get(spk, 0) + 1
     print(f"  ✅ Speakers detectados: {counts}")
 
-    return segments
+    # Generar embeddings simplificados: centroides MFCC por cluster
+    # Cada centroide es el vector MFCC promedio de todos los segmentos de ese speaker,
+    # útil como huella vocal básica cuando no hay pyannote disponible
+    mfcc_embeddings = {}
+    for cluster_id, spk_label in label_map.items():
+        mfcc_embeddings[spk_label] = kmeans.cluster_centers_[cluster_id].tolist()
+
+    return segments, mfcc_embeddings
 
 
 def transcribe_fallback_whisper(path):
@@ -321,14 +524,14 @@ def transcribe_fallback_whisper(path):
             segs.append(s)
 
         # Aplicar diarización espectral (MFCC + KMeans)
-        segs = _spectral_diarize(path, segs, num_speakers=2)
+        segs, mfcc_embeddings = _spectral_diarize(path, segs, num_speakers=2)
 
-        return segs
+        return segs, mfcc_embeddings
     except Exception as e:
         print(f"  ❌ Fallback también falló: {e}")
         import traceback
         traceback.print_exc()
-        return []
+        return [], {}
 
 def save_txt(segments, input_name, method):
     with open(OUTPUT_TRANSCRIPT_PATH, "w", encoding="utf-8") as f:
@@ -362,18 +565,34 @@ def main():
     y_vox, sr_vox = load_audio(vox)
     all_onsets = detect_onsets(y_vox, sr_vox)
 
-    # 2. Transcribe (Hybrid)
-    segments = try_transcribe_whisperx(vox)
+    # 2. Cargar base de datos de voces conocidas
+    voicedb = load_voicedb()
+    if voicedb:
+        print(f"\n📂 VoiceDB cargada: {len(voicedb)} MC(s) registrados — {', '.join(voicedb.keys())}")
+    else:
+        print(f"\n📂 VoiceDB vacía — los MCs se podrán registrar tras el análisis")
+
+    # 3. Transcribe (Hybrid)
+    segments, embeddings = try_transcribe_whisperx(vox)
     method = "WhisperX (Diarized)"
+    is_mfcc = False
     if segments is None:
-        segments = transcribe_fallback_whisper(vox)
+        segments, embeddings = transcribe_fallback_whisper(vox)
         method = "Whisper + Spectral Diarization (Fallback)"
+        is_mfcc = True  # Los embeddings MFCC son menos discriminativos
+
+    # 4. Identificar speakers por huella vocal
+    speaker_map = {}
+    if embeddings:
+        print(f"\n🔍 Identificando speakers...")
+        speaker_map = identify_speakers(embeddings, voicedb, is_mfcc=is_mfcc)
+        segments = rename_segments(segments, speaker_map)
 
     save_txt(segments, os.path.basename(infile), method)
 
-    # 3. Metrics per Speaker
+    # 5. Metrics per Speaker
     speaker_onsets = {}
-    
+
     # Mapear onsets a speakers usando los rangos temporales de la transcripción
     # Funciona tanto con WhisperX como con el fallback espectral
     has_speakers = any(s.get("speaker", "UNKNOWN") != "UNKNOWN" for s in segments)
@@ -400,7 +619,7 @@ def main():
     else:
         speaker_onsets["UNKNOWN"] = list(all_onsets)
 
-    # 4. Scoreboard
+    # 6. Scoreboard
     print("\n" + "="*60 + "\n  🏆 SCOREBOARD\n" + "="*60)
     for spk, onsets in speaker_onsets.items():
         if not onsets: continue
@@ -413,19 +632,34 @@ def main():
                 rhyme = s['text'].strip()
                 break
         
-        print(f"  {spk:<12} | SPS Max: {msp:<2.0f} | Acc: {acc:<4.1f}% | Syl: {tot}")
+        print(f"  {spk:<16} | SPS Max: {msp:<2.0f} | Acc: {acc:<4.1f}% | Syl: {tot}")
         if rhyme: print(f"    🔥 \"{rhyme[:50]}...\"")
         print("-" * 60)
 
-    # 5. Graph
+    # 7. Registro de nuevos MCs (si hay embeddings disponibles)
+    if embeddings:
+        voicedb = register_new_speakers(embeddings, speaker_map, voicedb, is_mfcc=is_mfcc)
+        # Re-renombrar segmentos por si el usuario registró nombres nuevos
+        segments = rename_segments(segments, speaker_map)
+        # Re-guardar transcripción con nombres actualizados
+        save_txt(segments, os.path.basename(infile), method)
+
+    # 8. Graph
     print(f"\n📊 Generando gráfico...")
     plt.figure(figsize=(14, 5), facecolor='#0d1117')
     ax = plt.gca()
     ax.set_facecolor('#161b22')
     ax.plot(np.linspace(0, len(y_vox)/sr, len(y_vox)), y_vox, color='#8b949e', alpha=0.3)
     for b in beats: ax.axvline(b, color='#ff6b6b', alpha=0.5, ls='--')
+    # Paleta de colores para speakers con nombre real (que no están en SPEAKER_COLORS)
+    _extra_colors = ["#3fb950", "#58a6ff", "#d2a8ff", "#f0883e", "#ff7b72"]
+    _color_idx = 0
     for spk, onsets in speaker_onsets.items():
-        c = SPEAKER_COLORS.get(spk, SPEAKER_COLORS["UNKNOWN"])
+        if spk in SPEAKER_COLORS:
+            c = SPEAKER_COLORS[spk]
+        else:
+            c = _extra_colors[_color_idx % len(_extra_colors)]
+            _color_idx += 1
         ax.vlines(onsets, -0.8, 0.8, color=c, alpha=0.8, label=spk)
     ax.legend()
     plt.savefig(OUTPUT_GRAPH_PATH)
