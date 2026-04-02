@@ -1,0 +1,54 @@
+[project]
+name = "flowmetrics"
+version = "1.0.0"
+description = "Telemetría acústica y análisis de flow para batallas de freestyle rap"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    { name = "Igor" },
+]
+
+dependencies = [
+    "librosa>=0.10",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+    "soundfile>=0.12",
+    "scikit-learn>=1.2",
+]
+
+[project.optional-dependencies]
+# Separación de audio con IA
+demucs = [
+    "demucs>=4.0",
+    "torch>=2.0",
+    "torchaudio>=2.0",
+]
+
+# Transcripción avanzada (recomendado)
+whisperx = [
+    "whisperx>=3.1",
+    "torch>=2.0",
+]
+
+# Transcripción básica (fallback)
+whisper = [
+    "openai-whisper>=20230918",
+]
+
+# NVIDIA NeMo (mejor diarización, requiere WSL2/Linux)
+nemo = [
+    "nemo_toolkit[asr]>=1.20",
+]
+
+# Todo incluido
+full = [
+    "flowmetrics[demucs,whisperx]",
+]
+
+[project.scripts]
+flowmetrics = "flowmetrics.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"

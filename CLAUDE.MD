@@ -4,19 +4,41 @@
 Eres un Ingeniero de Audio Senior y Científico de Datos experto en Procesamiento de Señales Digitales (DSP) y Music Information Retrieval (MIR). Tienes experiencia profunda en Python y en la manipulación de audio para analizar ritmos, frecuencias y biometría vocal.
 
 ## Objetivo del Proyecto
-Desarrollar "FlowMetrics": un sistema de telemetría y análisis acústico para batallas de freestyle rap. El sistema debe medir objetivamente el "flow" de un rapero calculando las Sílabas por Segundo (SPS) y la precisión rítmica (Beat Matching) frente a una base instrumental.
-Se debera diferenciar en la transcripcion entre los distintos actores, poder identificarlos y clasificarlos.
+"FlowMetrics" v1.0: sistema de telemetría acústica para batallas de freestyle rap. Mide objetivamente el flow de un MC con dos índices duales: Técnica (SPS, precisión rítmica) y Groove (swing, síncopa, melodía, sustain, dinámica). Diferencia speakers por voz, los identifica entre batallas via VoiceDB.
 
-## Stack Tecnológico Principal
+## Arquitectura (v1.0 — paquete modular)
+```
+flowmetrics/
+  __init__.py        # Versión
+  __main__.py        # Pipeline principal (orquestador)
+  cli.py             # argparse CLI
+  config.py          # Constantes, rutas, umbrales
+  patches.py         # Compatibilidad torchaudio/Windows
+  audio.py           # Carga, separación Demucs, búsqueda de archivos
+  analysis.py        # Beats, onsets, métricas, biometría DSP completa
+  transcription.py   # WhisperX, Whisper fallback, diarización espectral
+  voicedb.py         # Base de datos de huellas vocales, identificación
+  visualization.py   # Dashboard PNG (radar, SPS timeline, histograma, waveform) + HTML report
+  output.py          # Export TXT, JSON
+```
+
+## Uso
+```bash
+python -m flowmetrics batalla.wav
+python -m flowmetrics audio.wav --format html json --speakers 3 --no-register
+```
+
+## Stack Tecnológico
 * **Lenguaje:** Python 3.10+
-* **Procesamiento de Audio:** `librosa`, `soundfile`, `pydub`.
-* **Separación de Audio (Futuro):** `demucs` (Meta).
-* **Matemáticas y Datos:** `numpy`, `scipy`, `pandas`.
-* **Visualización:** `matplotlib`.
+* **Audio:** `librosa`, `soundfile`, `demucs` (Meta)
+* **Transcripción:** `whisperx` (con fallback a `whisper`)
+* **Diarización:** Sortformer v2 + TitaNet (NeMo) → pyannote → MFCC+KMeans
+* **Datos:** `numpy`, `scipy`, `scikit-learn`
+* **Visualización:** `matplotlib`
 
 ## Reglas de Desarrollo
-1.  **Desarrollo Iterativo (MVP primero):** No intentes hacer el procesamiento en tiempo real al principio. Empezaremos analizando archivos de audio `.wav` estáticos (offline).
-2.  **Modularidad:** Divide la lógica matemática en funciones limpias e independientes (ej. `detect_beats()`, `detect_vocals()`, `calculate_sps()`).
-3.  **Precisión sobre Velocidad:** En esta fase, es más importante que el algoritmo detecte correctamente las sílabas (onsets) que el hecho de que el código corra en milisegundos.
-4.  **Manejo de Ruido:** Ten siempre en cuenta que la voz del rapero tendrá variaciones de volumen y técnicas percusivas que pueden confundir al algoritmo de *onset detection*.
-5.  **Comentarios Categóricos:** Documenta el código en español explicando el "por qué" de las decisiones matemáticas, especialmente al configurar los umbrales de detección.
+1.  **Modularidad:** Cada módulo tiene responsabilidad única. No meter lógica cruzada.
+2.  **Precisión sobre Velocidad:** Priorizar detección correcta de sílabas sobre performance.
+3.  **Manejo de Ruido:** La voz del rapero tiene variaciones de volumen y técnicas percusivas.
+4.  **Comentarios en español:** Documentar el "por qué" de decisiones matemáticas/umbrales.
+5.  **Windows-first:** Siempre forzar UTF-8 en stdout, manejar paths con espacios/acentos.

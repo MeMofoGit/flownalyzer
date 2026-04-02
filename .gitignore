@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Audio (archivos grandes)
+*.wav
+*.mp3
+*.flac
+*.ogg
+
+# Outputs generados
+*_report.html
+*_metrics.json
+flow_graph.png
+transcripcion.txt
+full_output.txt
+
+# Separacion de audio (Demucs cache)
+separated/
+
+# Carpeta de pendientes (audio input)
+pendings/
+
+# IDE / config local
+.claude/settings.local.json
+.agent/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Modelos descargados
+*.nemo
+*.bin
+*.onnx
