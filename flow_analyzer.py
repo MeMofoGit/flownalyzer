@@ -79,7 +79,7 @@ BEAT_MATCH_THRESHOLD_S = 0.05
 WHISPERX_MODEL = "large-v2"
 WHISPER_FALLBACK_MODEL = "small"
 COMPUTE_TYPE = "int8"
-HF_TOKEN = os.environ.get("HF_TOKEN", "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")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 VOICEDB_PATH = os.path.join(SCRIPT_DIR, "voicedb.json")
 

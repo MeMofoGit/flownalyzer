@@ -40,10 +40,26 @@ if sys.platform == "win32":
         pass
 
 # ============================================================================
+# CARGA DE .env (tokens y secretos)
+# ============================================================================
+# Lee el archivo .env del directorio del proyecto para cargar variables
+# de entorno como HF_TOKEN sin exponerlas en el código fuente.
+
+_SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_env_path = os.path.join(_SCRIPT_DIR, ".env")
+if os.path.exists(_env_path):
+    with open(_env_path, "r") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _key, _val = _line.split("=", 1)
+                os.environ.setdefault(_key.strip(), _val.strip())
+
+# ============================================================================
 # RUTAS
 # ============================================================================
 
-SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPT_DIR = _SCRIPT_DIR
 INPUT_EXTENSIONS = [".wav", ".mp3", ".flac", ".ogg"]
 PENDINGS_DIR = os.path.join(SCRIPT_DIR, "pendings")
 DEMUCS_MODEL = "htdemucs"
@@ -65,7 +81,7 @@ BEAT_MATCH_THRESHOLD_S = 0.05
 WHISPERX_MODEL = "large-v2"
 WHISPER_FALLBACK_MODEL = "small"
 COMPUTE_TYPE = "int8"
-HF_TOKEN = os.environ.get("HF_TOKEN", "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")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 # ============================================================================
 # MODELOS NVIDIA (requieren NeMo, funciona en WSL2)

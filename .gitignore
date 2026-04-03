@@ -26,6 +26,9 @@ separated/
 # Carpeta de pendientes (audio input)
 pendings/
 
+# Secretos
+.env
+
 # IDE / config local
 .claude/settings.local.json
 .agent/
