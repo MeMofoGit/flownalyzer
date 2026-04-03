@@ -72,6 +72,15 @@ def parse_args(argv=None):
     )
 
     parser.add_argument(
+        "--vad-sensitivity",
+        type=str,
+        default="battle",
+        choices=["low", "normal", "battle", "aggressive"],
+        help="Sensibilidad del VAD para detección de voz (default: battle). "
+             "Usar 'aggressive' si se pierden secciones con ruido de público.",
+    )
+
+    parser.add_argument(
         "--version", "-V",
         action="version",
         version=f"FlowMetrics v{__version__}",

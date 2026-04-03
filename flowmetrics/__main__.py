@@ -176,6 +176,7 @@ def main(argv=None):
         vox_path,
         min_speakers=args.speakers,
         max_speakers=args.max_speakers,
+        vad_sensitivity=args.vad_sensitivity,
     )
 
     if segments is None:
@@ -202,6 +203,37 @@ def main(argv=None):
         print(f"\n  🔍 Identificando speakers ({emb_type})...")
         speaker_map = identify_speakers(embeddings, voicedb, emb_type=emb_type)
         segments = rename_segments(segments, speaker_map)
+
+    # ── 6b. Dedup final — eliminar segmentos duplicados del chunking ──
+    # Con chunks cortos (30s), la misma frase puede aparecer en dos chunks
+    # distintos con timestamps ligeramente diferentes tras la alineación.
+    if segments:
+        import re as _re
+        _norm = lambda t: _re.sub(r'[^\w\s]', '', t.strip().lower())
+        seen = []  # (start, normalized_text)
+        clean_segments = []
+        for seg in segments:
+            text = seg.get("text", "").strip()
+            if not text:
+                continue
+            norm_text = _norm(text)
+            start = seg.get("start", 0)
+            is_dup = False
+            for prev_start, prev_text in seen:
+                if abs(start - prev_start) < 5.0 and (
+                    prev_text == norm_text or
+                    (len(prev_text) > 8 and prev_text in norm_text) or
+                    (len(norm_text) > 8 and norm_text in prev_text)
+                ):
+                    is_dup = True
+                    break
+            if not is_dup:
+                clean_segments.append(seg)
+                seen.append((start, norm_text))
+        n_removed = len(segments) - len(clean_segments)
+        if n_removed > 0:
+            print(f"  🧹 Dedup final: {n_removed} segmentos duplicados eliminados")
+        segments = clean_segments
 
     # ── 7. Mapear onsets a speakers ──
     speaker_onsets = map_onsets_to_speakers(all_onsets, segments)

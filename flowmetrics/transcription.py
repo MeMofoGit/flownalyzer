@@ -29,12 +29,13 @@ from .config import (
 # TRANSCRIPCIÓN POR CHUNKS (evita que el VAD se pierda en pausas largas)
 # ============================================================================
 
-def _chunked_transcribe(model, audio, chunk_s=90, overlap_s=15):
-    """Transcribe audio largo en ventanas solapadas.
+def _chunked_transcribe(model, audio, chunk_s=30, overlap_s=5):
+    """Transcribe audio en ventanas cortas solapadas.
 
-    Cuando hay pausas largas con ruido de público (9-10s de gritos),
-    el VAD de WhisperX "se rinde". Partir en chunks solapados evita esto:
-    cada chunk tiene su propio pase de VAD desde cero.
+    Chunks de 30s (en vez de 90s) para que cada fragmento de la batalla
+    tenga su propio pase de VAD. Con 90s, WhisperX pierde secciones
+    enteras donde el MC sigue rapeando pero el VAD "se rinde" tras
+    ruido de público o cambios de volumen.
 
     Deduplicación: en zonas de overlap, si dos segmentos tienen start
     dentro de 1.5s, se queda el de mayor contenido.
@@ -78,22 +79,58 @@ def _chunked_transcribe(model, audio, chunk_s=90, overlap_s=15):
         chunk_idx += 1
         pos += step_samples
 
-    # Deduplicar
+    # Deduplicar segmentos de zonas de overlap.
+    # Con chunks cortos (30s) hay más overlap, así que usamos dos criterios:
+    # 1. Temporal: dos segmentos con start dentro de 3s = probable duplicado
+    # 2. Textual: si el texto es idéntico o uno contiene al otro
     if all_segments:
         all_segments.sort(key=lambda s: s.get("start", 0))
         deduped = [all_segments[0]]
         for seg in all_segments[1:]:
             prev = deduped[-1]
             time_diff = abs(seg.get("start", 0) - prev.get("start", 0))
-            if time_diff < 1.5:
+            # Normalizar texto para comparación (quitar puntuación y acentos)
+            import re as _re
+            _norm = lambda t: _re.sub(r'[^\w\s]', '', t.strip().lower())
+            prev_text = _norm(prev.get("text", ""))
+            seg_text = _norm(seg.get("text", ""))
+
+            is_time_dup = time_diff < 3.0
+            is_text_dup = (prev_text == seg_text or
+                           (len(prev_text) > 5 and prev_text in seg_text) or
+                           (len(seg_text) > 5 and seg_text in prev_text))
+
+            if is_time_dup or (time_diff < 5.0 and is_text_dup):
+                # Quedarse con el que tiene más texto
                 if len(seg.get("text", "")) > len(prev.get("text", "")):
                     deduped[-1] = seg
             else:
                 deduped.append(seg)
-        n_dupes = len(all_segments) - len(deduped)
+        # Segunda pasada: eliminar cualquier segmento cuyo texto ya apareció
+        # en los últimos 10 segmentos con timestamp cercano (< 5s)
+        final = [deduped[0]]
+        for seg in deduped[1:]:
+            seg_text = _norm(seg.get("text", ""))
+            seg_start = seg.get("start", 0)
+            is_dup = False
+            # Mirar los últimos N segmentos (no solo el anterior)
+            for prev in final[-10:]:
+                prev_text = _norm(prev.get("text", ""))
+                t_diff = abs(seg_start - prev.get("start", 0))
+                if t_diff < 5.0 and (
+                    prev_text == seg_text or
+                    (len(prev_text) > 5 and prev_text in seg_text) or
+                    (len(seg_text) > 5 and seg_text in prev_text)
+                ):
+                    is_dup = True
+                    break
+            if not is_dup:
+                final.append(seg)
+
+        n_dupes = len(all_segments) - len(final)
         if n_dupes > 0:
             print(f"    Dedup: {n_dupes} duplicados eliminados")
-        all_segments = deduped
+        all_segments = final
 
     print(f"  ✅ {len(all_segments)} segmentos de {chunk_idx} chunks")
     return all_segments
@@ -272,20 +309,36 @@ def _try_diarize_sortformer(audio_path, min_speakers=2):
 # PIPELINE PRINCIPAL DE TRANSCRIPCIÓN
 # ============================================================================
 
-def transcribe_whisperx(path, min_speakers=2, max_speakers=None):
+# Presets de sensibilidad VAD para distintos entornos.
+# vad_onset: umbral para INICIAR detección de voz (menor = más sensible)
+# vad_offset: umbral para TERMINAR detección de voz (menor = mantiene más)
+# En batallas de freestyle hay gritos de público, golpes de beat, y los MCs
+# a veces bajan el volumen o susurran — un VAD conservador pierde esas partes.
+VAD_PRESETS = {
+    "low":        {"vad_onset": 0.5,  "vad_offset": 0.363},  # Defaults WhisperX
+    "normal":     {"vad_onset": 0.4,  "vad_offset": 0.25},
+    "battle":     {"vad_onset": 0.25, "vad_offset": 0.15},   # Optimizado para batallas
+    "aggressive": {"vad_onset": 0.15, "vad_offset": 0.08},   # Captura casi todo
+}
+
+
+def transcribe_whisperx(path, min_speakers=2, max_speakers=None,
+                        vad_sensitivity="battle"):
     """Transcripción con WhisperX + diarización con cadena de fallback.
 
     Args:
         path: ruta al archivo de audio
         min_speakers: mínimo de speakers esperados (default 2 para batallas)
         max_speakers: máximo de speakers. None = dejar que pyannote decida.
-            Para batallas con host, usar 4-5 para no forzar merge de voces.
+        vad_sensitivity: preset de sensibilidad VAD ("low"|"normal"|"battle"|"aggressive")
 
     Returns:
         (segments, embeddings, emb_type) donde emb_type es:
         "titanet" | "pyannote" | "whisperx_no_diarize" | "failed"
     """
+    vad_opts = VAD_PRESETS.get(vad_sensitivity, VAD_PRESETS["battle"])
     print(f"\n📝 [PASO 5] WhisperX...")
+    print(f"  🎚️  VAD: {vad_sensitivity} (onset={vad_opts['vad_onset']}, offset={vad_opts['vad_offset']})")
     try:
         import torch
         import whisperx
@@ -295,6 +348,7 @@ def transcribe_whisperx(path, min_speakers=2, max_speakers=None):
         model = whisperx.load_model(
             WHISPERX_MODEL, device,
             compute_type=COMPUTE_TYPE, language="es",
+            vad_options=vad_opts,
         )
         audio = whisperx.load_audio(path)
 
