@@ -45,7 +45,7 @@ from .transcription import (
 )
 from .voicedb import (
     load_voicedb, identify_speakers, register_new_speakers,
-    rename_segments, save_voicedb,
+    rename_segments, save_voicedb, manage_voicedb_interactive,
 )
 from .output import save_transcript_txt, save_json
 from .visualization import generate_dashboard, generate_html_report
@@ -130,6 +130,11 @@ def _print_scoreboard(resultados, segments):
 
 def main(argv=None):
     args = parse_args(argv)
+
+    # Modo gestión de VoiceDB (no requiere audio)
+    if args.manage_voicedb:
+        manage_voicedb_interactive()
+        return
 
     patch_torchaudio()
 

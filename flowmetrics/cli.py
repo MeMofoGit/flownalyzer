@@ -81,6 +81,13 @@ def parse_args(argv=None):
     )
 
     parser.add_argument(
+        "--manage-voicedb",
+        action="store_true",
+        help="Gestionar VoiceDB: listar, renombrar o eliminar MCs registrados. "
+             "No requiere archivo de audio.",
+    )
+
+    parser.add_argument(
         "--version", "-V",
         action="version",
         version=f"FlowMetrics v{__version__}",

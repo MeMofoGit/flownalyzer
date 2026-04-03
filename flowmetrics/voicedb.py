@@ -180,3 +180,79 @@ def rename_segments(segments, speaker_map):
         if old_spk in speaker_map:
             seg["speaker"] = speaker_map[old_spk]
     return segments
+
+
+def manage_voicedb_interactive():
+    """Menú interactivo para gestionar la VoiceDB sin re-analizar audio.
+
+    Permite listar, renombrar y eliminar MCs registrados.
+    """
+    db = load_voicedb()
+
+    while True:
+        print("\n" + "=" * 50)
+        print("  📂 VoiceDB Manager")
+        print("=" * 50)
+
+        if not db:
+            print("  (vacía — analiza un audio primero para registrar MCs)\n")
+        else:
+            print(f"  {len(db)} MC(s) registrados:\n")
+            for i, (name, data) in enumerate(db.items(), 1):
+                emb_type = data.get("type", "?")
+                battles = data.get("battles", 0)
+                dims = len(data.get("embedding", []))
+                print(f"    {i}. {name}  ({emb_type}, {dims}d, {battles} batalla(s))")
+
+        print()
+        print("  Comandos:")
+        print("    r <num> <nuevo_nombre>  — Renombrar MC")
+        print("    d <num>                 — Eliminar MC")
+        print("    q                       — Salir")
+        print()
+
+        cmd = input("  > ").strip()
+
+        if not cmd or cmd.lower() == "q":
+            break
+
+        parts = cmd.split(None, 2)
+        action = parts[0].lower()
+        names_list = list(db.keys())
+
+        if action == "r" and len(parts) >= 3:
+            try:
+                idx = int(parts[1]) - 1
+                new_name = parts[2].strip()
+                if 0 <= idx < len(names_list):
+                    old_name = names_list[idx]
+                    if new_name in db and new_name != old_name:
+                        print(f"  ❌ '{new_name}' ya existe")
+                        continue
+                    db[new_name] = db.pop(old_name)
+                    save_voicedb(db)
+                    print(f"  ✅ '{old_name}' → '{new_name}'")
+                else:
+                    print(f"  ❌ Número inválido (1-{len(names_list)})")
+            except ValueError:
+                print("  ❌ Uso: r <número> <nuevo_nombre>")
+
+        elif action == "d" and len(parts) >= 2:
+            try:
+                idx = int(parts[1]) - 1
+                if 0 <= idx < len(names_list):
+                    name = names_list[idx]
+                    confirm = input(f"  ¿Eliminar '{name}'? (s/n): ").strip().lower()
+                    if confirm in ("s", "si", "y", "yes"):
+                        del db[name]
+                        save_voicedb(db)
+                        print(f"  ✅ '{name}' eliminado")
+                    else:
+                        print("  Cancelado")
+                else:
+                    print(f"  ❌ Número inválido (1-{len(names_list)})")
+            except ValueError:
+                print("  ❌ Uso: d <número>")
+
+        else:
+            print("  ❌ Comando no reconocido. Usa: r, d, q")
